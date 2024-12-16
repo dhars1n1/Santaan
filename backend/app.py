@@ -6,11 +6,23 @@ import os
 from dotenv import load_dotenv
 from lib.docsearch import docsearch
 
+from Bio import Entrez
+
 load_dotenv()
 
 # Initialize the Flask application
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})  # Enable CORS for all routes
+
+
+# Set the email address for Entrez API usage
+Entrez.email = os.getenv("ENTREZ_EMAIL")
+# Define lists of topics (you can modify this as per your requirement)
+topics = ['IVF', 'How can I minimize damage to the egg during sperm injection procedures?']
+
+# Define date range
+date_range = '("2012/03/01"[Date - Create] : "2022/12/31"[Date - Create])'
+
 
 # Configure the Google Generative AI with your API key
 gemini_api_key = os.getenv("GEMINI_API_KEY")
@@ -143,6 +155,65 @@ def chat():
     except Exception as e:
         print(f"Error in chat endpoint: {str(e)}")
         return jsonify({"error": "An error occurred while processing the request."}), 500
+
+
+# Define a route to fetch PubMed articles (GET request)
+@app.route('/fetch-pubmed', methods=['GET'])
+def fetch_pubmed():
+    """
+    Endpoint to fetch the top 3 PubMed articles based on the topic and return Topic and URL.
+    Expects topics and date range parameters (optional) in the URL.
+    """
+    try:
+        # Build the query dynamically based on the available topics
+        queries = []
+        
+        if topics:
+            topic_queries = ['{}[Title/Abstract]'.format(topic) for topic in topics]
+            queries.append('(' + ' OR '.join(topic_queries) + ')')
+
+        full_query = ' AND '.join(queries) + ' AND ' + date_range
+
+        # Search PubMed for relevant records (limit to top 3)
+        handle = Entrez.esearch(db='pubmed', retmax=3, term=full_query)
+        record = Entrez.read(handle)
+        id_list = record['IdList']
+
+        # List to store results
+        results = []
+
+        # Fetch information for each record in the id_list
+        for pmid in id_list:
+            handle = Entrez.efetch(db='pubmed', id=pmid, retmode='xml')
+            records = Entrez.read(handle)
+
+            # Process each PubMed article in the response
+            for record in records['PubmedArticle']:
+                title = record['MedlineCitation']['Article']['ArticleTitle']
+                # Construct the PubMed URL
+                url = f"https://www.ncbi.nlm.nih.gov/pubmed/{pmid}"
+                
+                # Add result to the list
+                results.append({
+                    'Topic': title,  # The title is used as the topic
+                    'URL': url
+                })
+
+        return jsonify({
+            "status": "success",
+            "data": results
+        }), 200
+
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Full error details: {error_details}")
+        return jsonify({
+            "status": "error", 
+            "message": str(e),
+            "details": error_details
+        }), 500
+
 
 # Add a simple root route to verify server is running
 @app.route("/", methods=["GET"])
