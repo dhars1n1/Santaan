@@ -17,12 +17,6 @@ CORS(app, resources={r"/*": {"origins": "*"}})  # Enable CORS for all routes
 
 # Set the email address for Entrez API usage
 Entrez.email = os.getenv("ENTREZ_EMAIL")
-# Define lists of topics (you can modify this as per your requirement)
-topics = ['IVF', 'How can I minimize damage to the egg during sperm injection procedures?']
-
-# Define date range
-date_range = '("2012/03/01"[Date - Create] : "2022/12/31"[Date - Create])'
-
 
 # Configure the Google Generative AI with your API key
 gemini_api_key = os.getenv("GEMINI_API_KEY")
@@ -162,15 +156,20 @@ def chat():
 def fetch_pubmed():
     """
     Endpoint to fetch the top 3 PubMed articles based on the topic and return Topic and URL.
-    Expects topics and date range parameters (optional) in the URL.
+    Expects topics and date range parameters in the URL.
     """
     try:
-        # Build the query dynamically based on the available topics
+        # Get topics and date range from query parameters
+        topics = request.args.getlist('topics')
+        date_range = request.args.get('date_range', '("2012/03/01"[Date - Create] : "2022/12/31"[Date - Create])')
+
+        if not topics:
+            return jsonify({"status": "error", "message": "No topics provided"}), 400
+
+        # Build the query dynamically
         queries = []
-        
-        if topics:
-            topic_queries = ['{}[Title/Abstract]'.format(topic) for topic in topics]
-            queries.append('(' + ' OR '.join(topic_queries) + ')')
+        topic_queries = ['{}[Title/Abstract]'.format(topic) for topic in topics]
+        queries.append('(' + ' OR '.join(topic_queries) + ')')
 
         full_query = ' AND '.join(queries) + ' AND ' + date_range
 
@@ -192,7 +191,7 @@ def fetch_pubmed():
                 title = record['MedlineCitation']['Article']['ArticleTitle']
                 # Construct the PubMed URL
                 url = f"https://www.ncbi.nlm.nih.gov/pubmed/{pmid}"
-                
+
                 # Add result to the list
                 results.append({
                     'Topic': title,  # The title is used as the topic
@@ -209,7 +208,7 @@ def fetch_pubmed():
         error_details = traceback.format_exc()
         print(f"Full error details: {error_details}")
         return jsonify({
-            "status": "error", 
+            "status": "error",
             "message": str(e),
             "details": error_details
         }), 500
