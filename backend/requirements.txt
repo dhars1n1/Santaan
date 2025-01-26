@@ -1,6 +1,7 @@
-Flask
-flask-cors
+flask
+flask_cors
 google-generativeai
+groq
 python-dotenv
 BioPython
 pinecone-client
